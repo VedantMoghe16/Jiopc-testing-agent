@@ -1,0 +1,54 @@
+#!/bin/sh
+# postinst for jiopc-testing-agent
+#
+# Best-effort Playwright setup for Part A (web checks). Playwright cannot be
+# packaged from apt, so we create a private venv under /opt and pip-install it
+# there, then download Chromium. EVERY step is best-effort: if anything fails
+# we print clear manual instructions and exit 0 — the package MUST still
+# install (Parts B and C work without Playwright; Part A will emit ERROR
+# records carrying the same hint).
+set -e
+
+APP_HOME=/opt/jiopc-testing-agent
+VENV="$APP_HOME/venv"
+
+print_manual_hint() {
+    echo "jiopc-testing-agent: automatic Playwright setup did not complete." >&2
+    echo "Parts B and C are fully functional; Part A (web checks) needs:" >&2
+    echo "    sudo python3 -m venv $VENV" >&2
+    echo "    sudo $VENV/bin/pip install playwright" >&2
+    echo "    sudo $VENV/bin/python -m playwright install chromium --with-deps" >&2
+    echo "See INSTALL.md in $APP_HOME for details." >&2
+}
+
+case "$1" in
+    configure)
+        echo "jiopc-testing-agent: setting up Playwright venv (best-effort)..." >&2
+        if python3 -m venv "$VENV" 2>/dev/null \
+            && "$VENV/bin/pip" install --quiet playwright 2>/dev/null; then
+            # Chromium download is large and needs network; --with-deps pulls
+            # the system libraries Chromium needs on a fresh Ubuntu 24.04.
+            if "$VENV/bin/python" -m playwright install chromium --with-deps \
+                >/dev/null 2>&1; then
+                echo "jiopc-testing-agent: Playwright + Chromium ready in $VENV" >&2
+            else
+                # Retry without --with-deps (e.g. no sudo-able apt inside CI).
+                if "$VENV/bin/python" -m playwright install chromium \
+                    >/dev/null 2>&1; then
+                    echo "jiopc-testing-agent: Chromium installed (system deps" \
+                         "not verified; run 'playwright install-deps chromium'" \
+                         "if Part A reports browser errors)." >&2
+                else
+                    print_manual_hint
+                fi
+            fi
+        else
+            print_manual_hint
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+esac
+
+# Never fail the package install because of the optional web stack.
+exit 0

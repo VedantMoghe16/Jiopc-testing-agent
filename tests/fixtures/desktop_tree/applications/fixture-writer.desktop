@@ -1,0 +1,9 @@
+# Fixture system entry — fully correct app (PASS / PASS in Part C).
+[Desktop Entry]
+Type=Application
+Name=Fixture Writer
+Comment=A fake word processor used by the test-suite
+Exec=fixture-writer %F
+Icon=fixture-writer
+Terminal=false
+Categories=Office;WordProcessor;

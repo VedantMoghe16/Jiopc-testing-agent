@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fixture Slow</title>
+</head>
+<body>
+  <!-- The fixture HTTP server delays this response server-side (see conftest.py);
+       the page itself is healthy so only the load-time threshold trips. -->
+  <nav id="top-nav"><a href="/slow.html">Home</a></nav>
+  <main>
+    <h1>Fixture slow page</h1>
+    <input type="search" placeholder="Search">
+  </main>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Fixture system entry — Desktop shortcut is in the right folder, but
+# Categories= lacks the expected "Office" → start_menu MISPLACED.
+[Desktop Entry]
+Type=Application
+Name=Fixture Calc
+Comment=A fake calculator used by the test-suite
+Exec=fixture-calc
+Icon=fixture-calc
+Terminal=false
+Categories=Utility;

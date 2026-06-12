@@ -1,0 +1,11 @@
+# Launcher for the Part B fixture app. NOTE: Exec uses a relative path, so this
+# static entry only works when the agent is run from the repo root (demo use).
+# test_part_b.py / test_end_to_end.py generate a copy with absolute paths.
+[Desktop Entry]
+Type=Application
+Name=Fixture Fake App
+Comment=Long-running fake native app used by Part B tests
+Exec=python3 ./tests/fixtures/fake_app.py %U
+Icon=utilities-terminal
+Terminal=false
+Categories=Utility;

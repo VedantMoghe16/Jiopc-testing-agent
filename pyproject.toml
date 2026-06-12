@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jiopc-testing-agent"
+version = "1.0.0"
+description = "Scripted validation agent for freshly patched JioPC OS images (web, native, desktop-presence checks) with a post-run LLM analysis layer."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "InnovAstra" }]
+keywords = ["jiopc", "testing", "validation", "lxqt", "ubuntu"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+# Part A (web checks) needs Playwright + a Chromium download; everything else
+# (Parts B/C, logging, analysis) runs on the base dependencies only.
+web = ["playwright>=1.40"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+jiopc-agent = "jiopc_agent.cli:main"
+jiopc-agent-analyse = "jiopc_agent.analyse_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

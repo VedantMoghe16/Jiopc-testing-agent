@@ -1,0 +1,75 @@
+# ============================================================================
+# fixture-config.yaml — agent config pointing at the test fixtures.
+#
+# Used two ways:
+#   * demo:  python jiopc_agent.py --config tests/fixture-config.yaml
+#            (run from the repo root with the fixture web server on port 8901:
+#             python -m pytest is not needed; conftest.py starts the same
+#             server for the test-suite)
+#   * tests: test_end_to_end.py reads this file, substitutes the live server
+#            port / absolute paths / a tmp log_dir, and runs the real CLI.
+#
+# Expected outcomes (the e2e test asserts these):
+#   A: FixtureOK PASS, FixtureSlow FAIL (slow load), FixtureCaptcha BLOCKED
+#      (expected), FixtureMissingElements FAIL, FixtureServerError FAIL
+#   B: FakeApp PASS (and no orphan process afterwards)
+#   C: Chess PASS/PASS, Writer PASS/PASS, Paint MISPLACED/PASS,
+#      Calc PASS/MISPLACED, Ghost MISSING/MISSING
+# ============================================================================
+
+agent:
+  log_dir: ~/.local/share/jiopc/agent-fixture/   # e2e test rewrites to a tmp dir
+  llm_prompt_file: ./prompts/analyse_log.txt
+  part_order: [A, B, C]
+  fail_on: [FAIL, MISSING, MISPLACED, ERROR]
+  cooldown_s: 0.5          # fixture app is tiny; keep the suite fast
+  poll_interval_ms: 100
+  term_grace_s: 2
+  element_timeout_ms: 1500 # missing elements must fail fast, not eat 5 s each
+  parallel: false
+  email: {enabled: false}
+  paths:
+    applications_dirs: [./tests/fixtures/desktop_tree/applications]
+    desktop_dir: ./tests/fixtures/desktop_tree/Desktop
+
+web_apps:
+  - name: FixtureOK              # healthy page → PASS
+    url: http://127.0.0.1:8901/ok.html
+    load_time_threshold_ms: 8000
+    elements:
+      - {selector: "nav", description: top navigation}
+      - {selector: "input[type=search]", description: search box}
+
+  - name: FixtureSlow            # server delays ~1.5 s, threshold 250 ms → FAIL
+    url: http://127.0.0.1:8901/slow.html
+    load_time_threshold_ms: 250
+
+  - name: FixtureCaptcha         # "Just a moment..." page → BLOCKED (expected)
+    url: http://127.0.0.1:8901/captcha.html
+    bot_detection_expected: true
+
+  - name: FixtureMissingElements # loads OK but selectors absent → FAIL
+    url: http://127.0.0.1:8901/missing-elements.html
+    elements:
+      - {selector: "nav", description: top navigation}
+      - {selector: "#search-box", description: search box}
+
+  - name: FixtureServerError     # handler returns HTTP 500 → FAIL
+    url: http://127.0.0.1:8901/500
+    load_time_threshold_ms: 8000
+
+native_apps:
+  - name: FakeApp
+    desktop_file: ./tests/fixtures/desktop_tree/applications/fixture-fakeapp.desktop
+    process_name: jiopc-fake-app   # fake_app.py renames itself to this
+    launch_timeout_s: 10
+
+desktop_presence:
+  - {name: Chess,  desktop_id: org.fixture.Chess.desktop, desktop_folder: Games,        start_menu_category: Game}
+  - {name: Writer, desktop_id: fixture-writer.desktop,    desktop_folder: Productivity, start_menu_category: Office}
+  # shortcut sits in Desktop/Games/ but Education/ is expected → desktop_folder MISPLACED
+  - {name: Paint,  desktop_id: fixture-paint.desktop,     desktop_folder: Education,    start_menu_category: Graphics}
+  # Categories=Utility; but Office expected → start_menu MISPLACED
+  - {name: Calc,   desktop_id: fixture-calc.desktop,      desktop_folder: Productivity, start_menu_category: Office}
+  # no .desktop anywhere → MISSING on both dimensions
+  - {name: Ghost,  desktop_id: fixture-ghost.desktop,     desktop_folder: Games,        start_menu_category: Game}

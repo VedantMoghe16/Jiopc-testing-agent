@@ -1,0 +1,10 @@
+# Fixture system entry — fully correct app (PASS / PASS in Part C).
+[Desktop Entry]
+Type=Application
+Name=Fixture Chess
+Name[hi]=शतरंज
+Comment=A fake chess game used by the test-suite
+Exec=fixture-chess --profile default %U
+Icon=fixture-chess
+Terminal=false
+Categories=Game;BoardGame;

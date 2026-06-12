@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Fixture Writer
+Exec=fixture-writer %F
+Icon=fixture-writer
+Categories=Office;WordProcessor;

@@ -1,0 +1,115 @@
+# github-actions-example.yml — bonus CI pipeline for the JioPC testing agent.
+#
+# Copy to .github/workflows/jiopc-agent.yml to activate. It demonstrates:
+#   1. a containerised Ubuntu 24.04 run (same OS as the JioPC target image),
+#   2. building + installing the .deb produced by packaging/build-deb.sh
+#      (the auto-DQ check: the package must install on fresh Ubuntu 24.04),
+#   3. running the agent against the hermetic fixture config (no live
+#      internet apps in CI — deterministic),
+#   4. an optional LLM analysis step that comments the PROMOTE/HOLD summary
+#      on the pull request (skipped cleanly when LLM secrets are not set —
+#      the agent itself never needs an LLM, SPEC anti-goal §5.3).
+#
+# Required repo secrets for the LLM step (all optional):
+#   LLM_BASE_URL  e.g. https://api.openai.com/v1   (OpenAI-compatible)
+#   LLM_MODEL     e.g. gpt-4o-mini
+#   LLM_API_KEY   omit for a local/keyless gateway
+
+name: jiopc-testing-agent
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write   # for the LLM comment step
+
+jobs:
+  validate-image:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04   # match the JioPC target OS exactly
+    steps:
+      - name: Install base tooling (fresh container has no git/python)
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git ca-certificates python3 python3-venv python3-pip \
+            python3-yaml python3-psutil time
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the .deb
+        run: bash packaging/build-deb.sh
+
+      - name: Install the .deb on fresh Ubuntu 24.04 (auto-DQ gate)
+        run: |
+          apt-get install -y ./dist/jiopc-testing-agent_*_all.deb
+          command -v jiopc-agent
+          command -v jiopc-agent-analyse
+          jiopc-agent --version
+
+      - name: Run unit tests against fixtures
+        run: |
+          python3 -m venv .ci-venv
+          .ci-venv/bin/pip install -e '.[dev]'
+          .ci-venv/bin/python -m pytest -q
+
+      - name: Run the agent (hermetic fixture config)
+        id: agent
+        # Fixture run exercises the full pipeline without live Jio endpoints.
+        # The agent's exit code is the verdict; keep going so we can still
+        # upload the log and post the LLM analysis on failure.
+        continue-on-error: true
+        run: |
+          rc=0
+          jiopc-agent --config tests/fixture-config.yaml --no-email || rc=$?
+          echo "exit_code=${rc}" >> "$GITHUB_OUTPUT"
+          log="$(ls -1t "$HOME/.local/share/jiopc/agent"/test_run_*.log 2>/dev/null | head -n1 || true)"
+          echo "log_path=${log}" >> "$GITHUB_OUTPUT"
+          [ "${rc}" -eq 0 ] || [ "${rc}" -eq 1 ]   # 2 = config error -> fail step
+
+      - name: Upload run log artifact
+        if: ${{ steps.agent.outputs.log_path != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: jiopc-agent-log
+          path: ${{ steps.agent.outputs.log_path }}
+          if-no-files-found: warn
+
+      - name: LLM analysis (optional — needs LLM_* secrets)
+        id: analyse
+        if: ${{ steps.agent.outputs.log_path != '' }}
+        env:
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          if [ -z "${LLM_BASE_URL}" ] || [ -z "${LLM_MODEL}" ]; then
+            echo "LLM secrets not configured; skipping analysis (agent run is unaffected)."
+            exit 0
+          fi
+          jiopc-agent-analyse --log "${{ steps.agent.outputs.log_path }}" \
+            | tee analysis.md
+
+      - name: Comment analysis on the pull request
+        if: ${{ github.event_name == 'pull_request' && hashFiles('analysis.md') != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('analysis.md', 'utf8');
+            const rc = '${{ steps.agent.outputs.exit_code }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## JioPC agent run (exit ${rc})\n\n${body}`,
+            });
+
+      - name: Enforce the agent verdict
+        # The run's exit code is the gate: 0 = all required tests pass.
+        run: |
+          test "${{ steps.agent.outputs.exit_code }}" = "0"

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Fixture Chess
+Exec=fixture-chess --profile default %U
+Icon=fixture-chess
+Categories=Game;BoardGame;

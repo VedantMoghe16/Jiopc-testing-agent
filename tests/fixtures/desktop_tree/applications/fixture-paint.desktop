@@ -1,0 +1,10 @@
+# Fixture system entry — correct Categories, but its Desktop shortcut lives in
+# Games/ while the config expects Education/ → desktop_folder MISPLACED.
+[Desktop Entry]
+Type=Application
+Name=Fixture Paint
+Comment=A fake painting app used by the test-suite
+Exec=fixture-paint %f
+Icon=fixture-paint
+Terminal=false
+Categories=Graphics;2DGraphics;

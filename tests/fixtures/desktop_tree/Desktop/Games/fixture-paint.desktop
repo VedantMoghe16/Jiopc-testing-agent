@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Fixture Paint
+Exec=fixture-paint %f
+Icon=fixture-paint
+Categories=Graphics;2DGraphics;
