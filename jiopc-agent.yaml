@@ -117,7 +117,9 @@ web_apps:
     # If the JioPC image owners want the tile re-pointed to JioHotstar, update
     # the url above; this check verifies the current production reality.
     elements:
-      - {selector: "a[href*=hotstar i], a:has-text(\"Hotstar\"), button:has-text(\"Hotstar\")", description: Watch-on-JioHotstar CTA}
+      # CTA may be a graphic, not a text button — accept a link to hotstar, an
+      # image/aria-label naming it, or any visible "Hotstar" text.
+      - {selector: "a[href*=hotstar i], img[alt*=hotstar i], [aria-label*=hotstar i], :text-matches(\"hotstar\", \"i\")", description: JioHotstar migration CTA}
       - {selector: "img", description: at least one poster/banner image}
 
   - name: JioMart                      # e-commerce tile
