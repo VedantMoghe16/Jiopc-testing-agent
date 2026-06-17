@@ -96,7 +96,11 @@ web_apps:
   - name: JioSaavn                     # music streaming tile
     url: https://www.jiosaavn.com
     load_time_threshold_ms: 8000
-    bot_detection_expected: false
+    # JioSaavn's edge serves a hard "Access Denied" bot wall to headless
+    # Chromium with no cookie history. Confirmed via failure screenshot; the
+    # "access denied" marker already catches it (→ BLOCKED). Marked expected so
+    # the LLM treats it as informational, not an anomaly (never bypassed).
+    bot_detection_expected: true
     elements:
       - {selector: "nav, header", description: top navigation}
       - {selector: "input[type=search], [role=search], [class*=search]", description: search box}
@@ -105,21 +109,33 @@ web_apps:
     url: https://www.jiocinema.com
     load_time_threshold_ms: 10000      # heavy media homepage; more headroom
     bot_detection_expected: false
+    # NOTE: as of 2026, jiocinema.com serves a brand-migration splash that
+    # redirects users to JioHotstar — there is no nav bar, just a promo graphic
+    # and a "Watch on JioHotstar" CTA. The tile still opens a reachable, fully
+    # rendered live page, so the element check confirms render by matching the
+    # Hotstar CTA (link to hotstar, any text) rather than a stale nav element.
+    # If the JioPC image owners want the tile re-pointed to JioHotstar, update
+    # the url above; this check verifies the current production reality.
     elements:
-      - {selector: "nav, header", description: top navigation}
+      - {selector: "a[href*=hotstar i], a:has-text(\"Hotstar\"), button:has-text(\"Hotstar\")", description: Watch-on-JioHotstar CTA}
       - {selector: "img", description: at least one poster/banner image}
 
   - name: JioMart                      # e-commerce tile
     url: https://www.jiomart.com
     load_time_threshold_ms: 10000
-    # JioMart fronts with an Akamai/Cloudflare-style bot manager that often
-    # challenges headless Chromium with no cookie history. A BLOCKED result
-    # here is therefore EXPECTED and informational, not an anomaly — and per
-    # the brief the agent logs it and never attempts to bypass it.
+    # JioMart usually serves a full storefront to headless Chromium (logo,
+    # nav, search, product grid — confirmed via screenshot) but on some runs
+    # its bot manager challenges a cookie-less headless browser. We keep
+    # bot_detection_expected: true as a SAFETY NET so a challenge run is graded
+    # BLOCKED (logged, never bypassed) rather than an anomalous FAIL; when the
+    # real site renders, the element checks below confirm it.
     bot_detection_expected: true
     elements:
-      - {selector: "header, nav", description: site header}
-      - {selector: "input[type=search], input[placeholder*=Search i]", description: product search box}
+      # Top bar is div-based, not semantic <header>/<nav> — match by class.
+      - {selector: "header, [class*=header i], [class*=navbar i]", description: site header}
+      # Homepage search is a clickable box/div that routes to search, not a
+      # real <input> — match an input OR a search-labelled container.
+      - {selector: "input[type=search], input[placeholder*=Search i], [class*=search i]", description: product search box}
 
   - name: JioCloud                     # cloud storage tile
     url: https://www.jiocloud.com
@@ -135,7 +151,9 @@ web_apps:
     bot_detection_expected: false
     elements:
       - {selector: "header, nav", description: top navigation}
-      - {selector: "footer", description: page footer (full render reached)}
+      # jio.com renders fully but uses a non-semantic footer; match class/id
+      # variants too (case-insensitive) so "full render reached" still holds.
+      - {selector: "footer, [class*=footer i], [id*=footer i]", description: page footer (full render reached)}
 
   - name: Wikipedia                    # education tile
     url: https://www.wikipedia.org
