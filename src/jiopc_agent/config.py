@@ -40,7 +40,22 @@ DEFAULT_BOT_MARKERS = (
     "attention required",
 )
 
+#: Default headless-browser identity for Part A. A real desktop Chrome UA (no
+#: "HeadlessChrome" token) + India locale/timezone so legitimate Jio sites are
+#: served their normal page and validated, instead of being false-flagged as a
+#: bot wall. This is presenting as the browser a JioPC user actually runs — it
+#: never solves or bypasses a CAPTCHA (those still log BLOCKED). See design.md.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+)
+DEFAULT_LOCALE = "en-IN"
+DEFAULT_TIMEZONE = "Asia/Kolkata"
+DEFAULT_VIEWPORT = (1920, 1080)
+
 VALID_PARTS = ("A", "B", "C")
+#: Per-element wait target: "attached" (in the DOM) or "visible" (rendered).
+VALID_ELEMENT_STATES = ("attached", "visible")
 
 
 # ---------------------------------------------------------------------------
@@ -50,10 +65,19 @@ VALID_PARTS = ("A", "B", "C")
 
 @dataclass(frozen=True)
 class ElementCheck:
-    """A CSS-selector presence check for Part A."""
+    """A UI-element presence check for Part A.
 
-    selector: str
+    Either a CSS ``selector`` **or** an accessible ``role`` (optionally with an
+    accessible ``name``) — the spec allows both ("CSS selectors or accessible
+    roles"). ``state`` controls how strict "present" is: ``attached`` (in the
+    DOM) or ``visible`` (actually rendered — closer to "visually sound").
+    """
+
     description: str
+    selector: str | None = None
+    role: str | None = None
+    name: str | None = None
+    state: str = "attached"
 
 
 @dataclass(frozen=True)
@@ -100,6 +124,19 @@ class EmailConfig:
 
 
 @dataclass(frozen=True)
+class BrowserConfig:
+    """Part A headless-browser identity (see :data:`DEFAULT_USER_AGENT`)."""
+
+    user_agent: str = DEFAULT_USER_AGENT
+    locale: str = DEFAULT_LOCALE
+    timezone_id: str = DEFAULT_TIMEZONE
+    viewport_width: int = DEFAULT_VIEWPORT[0]
+    viewport_height: int = DEFAULT_VIEWPORT[1]
+    #: Null out ``navigator.webdriver`` so a real page isn't mistaken for a bot.
+    mask_webdriver: bool = True
+
+
+@dataclass(frozen=True)
 class PathsConfig:
     """Filesystem sources for Part C; overridable so tests can use fixtures."""
 
@@ -122,7 +159,13 @@ class AgentSettings:
     parallel: bool = False
     term_grace_s: float = 5.0
     element_timeout_ms: int = 5000
+    #: Part A: retry a web check this many times on a *transient* navigation
+    #: failure (connection error / nav timeout) so a one-off network blip does
+    #: not HOLD an otherwise-healthy image. Non-transient verdicts (BLOCKED,
+    #: missing element, slow load, HTTP 4xx/5xx) are never retried.
+    web_retries: int = 1
     bot_detection_markers: tuple[str, ...] = DEFAULT_BOT_MARKERS
+    browser: BrowserConfig = field(default_factory=BrowserConfig)
     email: EmailConfig = field(default_factory=EmailConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
 
@@ -208,6 +251,21 @@ def _parse_email(path: Path, raw: Any) -> EmailConfig:
     )
 
 
+def _parse_browser(path: Path, raw: Any) -> BrowserConfig:
+    where = "agent.browser"
+    mapping = _require_map(path, where, raw if raw is not None else {})
+    width = int(_get_num(path, where, mapping, "viewport_width", DEFAULT_VIEWPORT[0], minimum=1))
+    height = int(_get_num(path, where, mapping, "viewport_height", DEFAULT_VIEWPORT[1], minimum=1))
+    return BrowserConfig(
+        user_agent=str(mapping.get("user_agent") or DEFAULT_USER_AGENT),
+        locale=str(mapping.get("locale") or DEFAULT_LOCALE),
+        timezone_id=str(mapping.get("timezone_id") or DEFAULT_TIMEZONE),
+        viewport_width=width,
+        viewport_height=height,
+        mask_webdriver=_get_bool(path, where, mapping, "mask_webdriver", True),
+    )
+
+
 def _parse_paths(path: Path, raw: Any) -> PathsConfig:
     where = "agent.paths"
     mapping = _require_map(path, where, raw if raw is not None else {})
@@ -271,9 +329,33 @@ def _parse_agent(path: Path, raw: Any) -> AgentSettings:
         element_timeout_ms=int(
             _get_num(path, where, mapping, "element_timeout_ms", 5000, minimum=100)
         ),
+        web_retries=int(_get_num(path, where, mapping, "web_retries", 1, minimum=0)),
         bot_detection_markers=markers,
+        browser=_parse_browser(path, mapping.get("browser")),
         email=_parse_email(path, mapping.get("email")),
         paths=_parse_paths(path, mapping.get("paths")),
+    )
+
+
+def _parse_element(path: Path, where: str, el: Any) -> ElementCheck:
+    """One element check: a CSS ``selector`` xor an accessible ``role``."""
+    el_map = _require_map(path, where, el)
+    has_selector = bool(str(el_map.get("selector") or "").strip())
+    has_role = bool(str(el_map.get("role") or "").strip())
+    if has_selector == has_role:
+        raise _err(path, where, "provide exactly one of 'selector' or 'role'")
+    state = str(el_map.get("state") or "attached").lower()
+    if state not in VALID_ELEMENT_STATES:
+        raise _err(path, where, f"state must be one of {list(VALID_ELEMENT_STATES)}")
+    name = el_map.get("name")
+    if name is not None and not has_role:
+        raise _err(path, where, "'name' is only valid alongside 'role'")
+    return ElementCheck(
+        description=_get_str(path, where, el_map, "description"),
+        selector=_get_str(path, where, el_map, "selector") if has_selector else None,
+        role=_get_str(path, where, el_map, "role") if has_role else None,
+        name=str(name) if name is not None else None,
+        state=state,
     )
 
 
@@ -286,14 +368,7 @@ def _parse_web_apps(path: Path, raw: Any) -> tuple[WebApp, ...]:
         for j, el in enumerate(
             _require_list(path, f"{where}.elements", mapping.get("elements", []))
         ):
-            el_where = f"{where}.elements[{j}]"
-            el_map = _require_map(path, el_where, el)
-            elements.append(
-                ElementCheck(
-                    selector=_get_str(path, el_where, el_map, "selector"),
-                    description=_get_str(path, el_where, el_map, "description"),
-                )
-            )
+            elements.append(_parse_element(path, f"{where}.elements[{j}]", el))
         apps.append(
             WebApp(
                 name=_get_str(path, where, mapping, "name"),

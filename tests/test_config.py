@@ -156,6 +156,98 @@ def test_presence_validation(tmp_path):
         )
 
 
+def test_element_role_and_state_parse(tmp_path):
+    cfg = _helpers.load_config_text(
+        tmp_path,
+        """
+        web_apps:
+          - name: Roles
+            url: http://x/
+            elements:
+              - {role: searchbox, description: search box}
+              - {role: button, name: Sign in, description: login button}
+              - {selector: nav, state: visible, description: nav}
+        """,
+    )
+    els = cfg.web_apps[0].elements
+    assert els[0].role == "searchbox" and els[0].selector is None
+    assert els[1].role == "button" and els[1].name == "Sign in"
+    assert els[2].selector == "nav" and els[2].state == "visible"
+    assert els[0].state == "attached"  # default
+
+
+def test_element_requires_exactly_one_locator(tmp_path):
+    with pytest.raises(ConfigError, match="exactly one of 'selector' or 'role'"):
+        _helpers.load_config_text(
+            tmp_path,
+            """
+            web_apps:
+              - name: Both
+                url: http://x/
+                elements:
+                  - {selector: nav, role: navigation, description: clash}
+            """,
+        )
+
+
+def test_element_name_without_role_rejected(tmp_path):
+    with pytest.raises(ConfigError, match="'name' is only valid alongside 'role'"):
+        _helpers.load_config_text(
+            tmp_path,
+            """
+            web_apps:
+              - name: Named
+                url: http://x/
+                elements:
+                  - {selector: nav, name: oops, description: x}
+            """,
+        )
+
+
+def test_element_bad_state_rejected(tmp_path):
+    with pytest.raises(ConfigError, match="state must be one of"):
+        _helpers.load_config_text(
+            tmp_path,
+            """
+            web_apps:
+              - name: BadState
+                url: http://x/
+                elements:
+                  - {selector: nav, state: hovered, description: x}
+            """,
+        )
+
+
+def test_browser_and_retry_defaults_and_overrides(tmp_path):
+    cfg = _helpers.load_config_text(
+        tmp_path, "web_apps:\n  - {name: A, url: http://x/}\n"
+    )
+    assert cfg.agent.web_retries == 1  # default: tolerate one transient blip
+    assert "HeadlessChrome" not in cfg.agent.browser.user_agent
+    assert cfg.agent.browser.locale == "en-IN"
+    assert cfg.agent.browser.mask_webdriver is True
+
+    cfg2 = _helpers.load_config_text(
+        tmp_path,
+        """
+        agent:
+          web_retries: 0
+          browser:
+            user_agent: Custom/1.0
+            locale: en-US
+            viewport_width: 1280
+            mask_webdriver: false
+        web_apps:
+          - {name: A, url: http://x/}
+        """,
+    )
+    assert cfg2.agent.web_retries == 0
+    assert cfg2.agent.browser.user_agent == "Custom/1.0"
+    assert cfg2.agent.browser.locale == "en-US"
+    assert cfg2.agent.browser.viewport_width == 1280
+    assert cfg2.agent.browser.mask_webdriver is False
+
+
 def test_cli_exits_2_on_config_error(capsys):
     from jiopc_agent import cli
 

@@ -46,6 +46,28 @@ agent:
   # short timeout so one missing element can't eat the whole load budget.
   element_timeout_ms: 5000
 
+  # Part A: how many times to retry a web check on a *transient* navigation
+  # failure (connection error or nav timeout) before giving up. A one-off
+  # network blip should never HOLD an otherwise-healthy image. Non-transient
+  # verdicts — BLOCKED, missing element, slow load, HTTP 4xx/5xx — are never
+  # retried (they are real signals). 1 = up to two attempts. Default: 1.
+  web_retries: 1
+
+  # Part A headless-browser identity. A default headless context advertises
+  # "HeadlessChrome" and navigator.webdriver=true, which makes legitimate
+  # sites serve a bot wall — a FALSE "BLOCKED" that hides whether the page
+  # actually renders. We present the browser a real JioPC user runs so the
+  # element checks validate the real page. This NEVER solves or bypasses a
+  # CAPTCHA: a genuine challenge page still logs BLOCKED (see §5.2). Tuned for
+  # JioPC's India audience; override per deployment.
+  browser:
+    user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    locale: en-IN
+    timezone_id: Asia/Kolkata
+    viewport_width: 1920
+    viewport_height: 1080
+    mask_webdriver: true            # null navigator.webdriver in the page
+
   # If true, Part A and Part C run concurrently (threads) and Part B runs
   # exclusively afterwards. Same as passing --parallel. Default: false.
   parallel: false
@@ -90,8 +112,16 @@ agent:
 #   bot_detection_expected  true = a challenge page is normal for this site;
 #                           result stays BLOCKED but is marked "expected" so
 #                           the LLM treats it as non-anomalous (def false)
-#   elements                CSS selector checks; ALL must appear within
-#                           agent.element_timeout_ms each, else FAIL
+#   elements                UI presence checks; ALL must appear within
+#                           agent.element_timeout_ms each, else FAIL. Each
+#                           element is EITHER a CSS selector OR an accessible
+#                           role (spec: "CSS selectors or accessible roles"):
+#                             - {selector: "nav", description: ...}
+#                             - {role: searchbox, description: ...}
+#                             - {role: button, name: "Sign in", description: ...}
+#                           Optional state: "attached" (in DOM, default) or
+#                           "visible" (actually rendered — stricter, matches
+#                           "renders correctly / visually sound").
 web_apps:
   - name: JioSaavn                     # music streaming tile
     url: https://www.jiosaavn.com

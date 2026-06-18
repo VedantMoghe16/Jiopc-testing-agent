@@ -24,6 +24,25 @@ Options:
 - `--parallel`: Run Part A and Part C concurrently for faster execution.
 - `--dry-run`: Validate config and list planned tests without running them.
 
+## Part A web checks
+Each web app's `elements` are presence checks that all must hold. An element is
+**either** a CSS selector or an accessible role:
+
+```yaml
+elements:
+  - {selector: "nav", description: top navigation}        # CSS
+  - {role: searchbox, description: search box}             # ARIA role
+  - {role: button, name: "Sign in", description: login}   # role + accessible name
+  - {selector: "footer", state: visible, description: rendered footer}  # must be visible, not just attached
+```
+
+The headless browser presents a realistic desktop-Chrome identity (`agent.browser`:
+user-agent, locale `en-IN`, timezone `Asia/Kolkata`, viewport, `navigator.webdriver`
+masked) so legitimate sites are validated instead of being false-flagged as a bot.
+A genuine CAPTCHA/challenge page is still logged `BLOCKED` and **never bypassed**.
+Transient navigation failures are retried (`agent.web_retries`, default 1) so a
+one-off network blip does not force a HOLD.
+
 ## Log Format
 The agent outputs a structured JSONL log to `~/.local/share/jiopc/agent/test_run_<timestamp>.log`.
 - `header`: Contains run metadata.

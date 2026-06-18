@@ -31,12 +31,19 @@ def _web_yaml(base_url: str, log_dir: Path, dead_url: str) -> str:
 agent:
   log_dir: {log_dir}
   element_timeout_ms: 1500
+  web_retries: 1
 web_apps:
   - name: OK
     url: {base_url}/ok.html
     elements:
       - {{selector: "nav", description: top navigation}}
       - {{selector: "input[type=search]", description: search box}}
+  - name: RoleChecks
+    url: {base_url}/ok.html
+    elements:
+      - {{role: "searchbox", description: search box by accessible role}}
+      - {{role: "heading", name: "Fixture OK page", description: main heading by role+name}}
+      - {{selector: "nav", state: visible, description: visible top nav}}
   - name: Slow
     url: {base_url}/slow.html
     load_time_threshold_ms: {SLOW_THRESHOLD_MS}
@@ -81,6 +88,13 @@ def test_healthy_page_passes(part_a_run):
     assert _helpers.result_of(rec) == "PASS", rec.detail
     assert isinstance(rec.data.get("load_ms"), (int, float)), rec.data
     assert "screenshot" not in rec.data  # never on PASS (disk + time budget)
+
+
+def test_accessible_role_and_visible_checks_pass(part_a_run):
+    """Element checks by ARIA role (+name) and a visible-state CSS check."""
+    rec = part_a_run[0]["web:RoleChecks"]
+    assert _helpers.result_of(rec) == "PASS", rec.detail
+    assert rec.data.get("elements_found") == 3, rec.data
 
 
 def test_slow_page_fails_but_records_load_ms(part_a_run):
@@ -132,6 +146,19 @@ def test_connection_error_fails_not_errors(part_a_run):
     """Unreachable app = the APP is broken (FAIL), not agent infra (ERROR)."""
     rec = part_a_run[0]["web:ConnectionRefused"]
     assert _helpers.result_of(rec) == "FAIL", rec.detail
+
+
+def test_transient_failure_is_retried(part_a_run):
+    """web_retries=1 ⇒ a transient connection error is tried twice before FAIL."""
+    rec = part_a_run[0]["web:ConnectionRefused"]
+    assert rec.data.get("attempts") == 2, rec.data
+    assert "after 2 attempts" in rec.detail
+
+
+def test_passing_page_records_no_retry(part_a_run):
+    """A page that loads first time carries no retry bookkeeping."""
+    rec = part_a_run[0]["web:OK"]
+    assert "attempts" not in rec.data, rec.data
 
 
 @pytest.mark.skipif(
