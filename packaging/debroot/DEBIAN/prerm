@@ -1,0 +1,20 @@
+#!/bin/sh
+# prerm for jiopc-testing-agent
+#
+# The Playwright venv under /opt/jiopc-testing-agent/venv is created by
+# postinst (not shipped in the package), so dpkg will not remove it for us.
+# Clean it up here so `apt remove` leaves nothing behind in /opt.
+# Best-effort: never block removal.
+set -e
+
+APP_HOME=/opt/jiopc-testing-agent
+
+case "$1" in
+    remove|purge)
+        rm -rf "$APP_HOME/venv" || true
+        ;;
+    upgrade|deconfigure|failed-upgrade)
+        ;;
+esac
+
+exit 0

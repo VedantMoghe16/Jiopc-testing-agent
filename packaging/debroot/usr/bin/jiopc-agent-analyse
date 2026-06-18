@@ -1,0 +1,10 @@
+#!/bin/sh
+# jiopc-agent-analyse — post-run LLM analysis of a test_run_*.log.
+# Needs LLM_BASE_URL / LLM_MODEL (LLM_API_KEY optional for local Ollama).
+set -eu
+APP_HOME=/opt/jiopc-testing-agent
+PY="$APP_HOME/venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+PYTHONPATH="$APP_HOME/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec "$PY" -m jiopc_agent.analyse_cli "$@"

@@ -1,0 +1,230 @@
+# ============================================================================
+# jiopc-agent.yaml — JioPC image validation agent configuration
+# ============================================================================
+# This file is the SINGLE source of truth: no app names, URLs, paths or
+# thresholds are hardcoded in the agent (brief §5.3). It doubles as schema
+# documentation — every knob below shows its default and meaning.
+#
+# Target image: Ubuntu 24.04 + LxQt (JioPC), 4 vCPU / 8 GB / no GPU.
+# Run:   python jiopc_agent.py --config jiopc-agent.yaml [--part A|B|C] [--analyse]
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Global agent settings
+# ----------------------------------------------------------------------------
+agent:
+  # Where JSONL run logs, failure screenshots and history.jsonl live.
+  # Must be inside $HOME — the agent never writes to /tmp or system paths.
+  log_dir: ~/.local/share/jiopc/agent/
+
+  # Prompt used by the post-run LLM analysis layer (analyse.py).
+  llm_prompt_file: ./prompts/analyse_log.txt
+
+  # Execution order for the parts. --part flags filter this list; they never
+  # reorder it. Default: [A, B, C].
+  part_order: [A, B, C]
+
+  # Results that make the run exit non-zero. BLOCKED (bot-detection page) and
+  # DEGRADED (app launched then died before the T+5s sample) are informative
+  # by default — add them here to make them fatal.
+  # Valid values: PASS, FAIL, BLOCKED, DEGRADED, MISSING, MISPLACED, ERROR.
+  fail_on: [FAIL, MISSING, MISPLACED, ERROR]
+
+  # Part B pacing: seconds of idle between native-app launches so one app's
+  # shutdown (disk flush, IPC teardown) cannot pollute the next app's
+  # launch-time and CPU samples. Rationale + measurements: benchmarks/REPORT.md.
+  cooldown_s: 2
+
+  # Part B process-detection poll interval (ms). Smaller = finer launch_ms
+  # resolution but more agent CPU; 500 ms keeps us well under the 20% budget.
+  poll_interval_ms: 500
+
+  # Part B: seconds to wait after SIGTERM before SIGKILLing the process group.
+  term_grace_s: 5
+
+  # Default per-element wait in Part A (ms). Each element check gets its own
+  # short timeout so one missing element can't eat the whole load budget.
+  element_timeout_ms: 5000
+
+  # If true, Part A and Part C run concurrently (threads) and Part B runs
+  # exclusively afterwards. Same as passing --parallel. Default: false.
+  parallel: false
+
+  # Case-insensitive substrings of page title/body that indicate a
+  # bot-detection / challenge page (→ BLOCKED, logged, never bypassed).
+  # Extend freely; the agent also checks for recaptcha/hcaptcha iframes and
+  # Cloudflare challenge containers regardless of this list.
+  bot_detection_markers:
+    - "just a moment"
+    - "are you human"
+    - "verify you are"
+    - "access denied"
+    - "attention required"
+
+  # Opt-in SMTP summary email after each run (bonus; see notify.py).
+  # Disabled by default; credentials are NEVER stored here — notify.py reads
+  # SMTP_USER / SMTP_PASSWORD from the environment.
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+    from: ""
+    to: ""
+    use_tls: true
+
+  # Filesystem sources for Part C. Overridable so tests can point at a fake
+  # XDG tree (see tests/fixture-config.yaml). Defaults shown.
+  paths:
+    applications_dirs:
+      - /usr/share/applications        # system-wide .desktop entries
+      - ~/.local/share/applications    # per-user entries / overrides
+    desktop_dir: ~/Desktop             # root containing the category folders
+
+# ----------------------------------------------------------------------------
+# Part A — web apps (headless Chromium via Playwright)
+# ----------------------------------------------------------------------------
+# Schema per app:
+#   name                    display name; log test id becomes "web:<name>"
+#   url                     page to open (domcontentloaded)
+#   load_time_threshold_ms  load slower than this → FAIL "slow load" (def 8000)
+#   bot_detection_expected  true = a challenge page is normal for this site;
+#                           result stays BLOCKED but is marked "expected" so
+#                           the LLM treats it as non-anomalous (def false)
+#   elements                CSS selector checks; ALL must appear within
+#                           agent.element_timeout_ms each, else FAIL
+web_apps:
+  - name: JioSaavn                     # music streaming tile
+    url: https://www.jiosaavn.com
+    load_time_threshold_ms: 8000
+    bot_detection_expected: false
+    elements:
+      - {selector: "nav, header", description: top navigation}
+      - {selector: "input[type=search], [role=search], [class*=search]", description: search box}
+
+  - name: JioCinema                    # video streaming tile
+    url: https://www.jiocinema.com
+    load_time_threshold_ms: 10000      # heavy media homepage; more headroom
+    bot_detection_expected: false
+    elements:
+      - {selector: "nav, header", description: top navigation}
+      - {selector: "img", description: at least one poster/banner image}
+
+  - name: JioMart                      # e-commerce tile
+    url: https://www.jiomart.com
+    load_time_threshold_ms: 10000
+    # JioMart fronts with an Akamai/Cloudflare-style bot manager that often
+    # challenges headless Chromium with no cookie history. A BLOCKED result
+    # here is therefore EXPECTED and informational, not an anomaly — and per
+    # the brief the agent logs it and never attempts to bypass it.
+    bot_detection_expected: true
+    elements:
+      - {selector: "header, nav", description: site header}
+      - {selector: "input[type=search], input[placeholder*=Search i]", description: product search box}
+
+  - name: JioCloud                     # cloud storage tile
+    url: https://www.jiocloud.com
+    load_time_threshold_ms: 8000
+    bot_detection_expected: false
+    elements:
+      - {selector: "header, nav", description: site header}
+      - {selector: "a[href*=login], a[href*=signin], button", description: login entry point}
+
+  - name: MyJio                        # account management tile (jio.com)
+    url: https://www.jio.com
+    load_time_threshold_ms: 8000
+    bot_detection_expected: false
+    elements:
+      - {selector: "header, nav", description: top navigation}
+      - {selector: "footer", description: page footer (full render reached)}
+
+  - name: Wikipedia                    # education tile
+    url: https://www.wikipedia.org
+    load_time_threshold_ms: 6000       # famously light page; tighter budget
+    bot_detection_expected: false
+    elements:
+      - {selector: "#searchInput", description: central search input}
+      - {selector: ".central-featured", description: language portal grid}
+
+# ----------------------------------------------------------------------------
+# Part B — native apps (launch → detect → sample → clean terminate)
+# ----------------------------------------------------------------------------
+# Schema per app:
+#   name              display name; log test id becomes "native:<name>"
+#   desktop_file      explicit .desktop path; if absent/missing the standard
+#                     agent.paths.applications_dirs are searched
+#   process_name      psutil name/exe match used to detect the real process
+#                     (may differ from Exec= — see LibreOffice below)
+#   launch_timeout_s  max wait for the process to appear (default 10)
+native_apps:
+  - name: Firefox                      # default browser on the JioPC image (deb build)
+    desktop_file: /usr/share/applications/firefox.desktop
+    process_name: firefox
+    launch_timeout_s: 15               # cold start with profile creation is slow
+
+  - name: Files                        # LxQt file manager
+    desktop_file: /usr/share/applications/pcmanfm-qt.desktop
+    process_name: pcmanfm-qt
+    launch_timeout_s: 10
+
+  - name: Text Editor                  # LxQt text editor
+    desktop_file: /usr/share/applications/featherpad.desktop
+    process_name: featherpad
+    launch_timeout_s: 10
+
+  - name: Terminal                     # LxQt terminal emulator
+    desktop_file: /usr/share/applications/qterminal.desktop
+    process_name: qterminal
+    launch_timeout_s: 10
+
+  - name: LibreOffice Writer
+    desktop_file: /usr/share/applications/libreoffice-writer.desktop
+    # Exec= runs the `soffice` shell wrapper; the surviving process is
+    # soffice.bin — match that, or detection would always time out.
+    process_name: soffice.bin
+    launch_timeout_s: 20               # office suite cold start is the slowest on 4 vCPU
+
+  - name: VLC
+    desktop_file: /usr/share/applications/vlc.desktop
+    process_name: vlc
+    launch_timeout_s: 10
+
+  - name: GCompris                     # education suite (also a Part C target)
+    desktop_file: /usr/share/applications/gcompris-qt.desktop
+    process_name: gcompris-qt
+    launch_timeout_s: 15               # Qt/QML asset loading on first run
+
+# ----------------------------------------------------------------------------
+# Part C — desktop & start-menu presence (read-only; exactly 15 apps)
+# ----------------------------------------------------------------------------
+# Schema per app (two log records each: presence:<name>:desktop_folder and
+# presence:<name>:start_menu):
+#   name                 display name
+#   desktop_id           .desktop file id as shipped by the Ubuntu 24.04
+#                        package (basename in /usr/share/applications)
+#   desktop_folder       expected folder under agent.paths.desktop_dir
+#   start_menu_category  required entry in the .desktop Categories= list
+#
+# Outcomes: file nowhere → MISSING; wrong folder or wrong/absent category →
+# MISPLACED (detail says found vs expected).
+desktop_presence:
+  # --- Games (folder: Games, category: Game) -------------------------------
+  - {name: Chess,      desktop_id: org.gnome.Chess.desktop,    desktop_folder: Games, start_menu_category: Game}
+  - {name: Mines,      desktop_id: org.gnome.Mines.desktop,    desktop_folder: Games, start_menu_category: Game}
+  - {name: Sudoku,     desktop_id: org.gnome.Sudoku.desktop,   desktop_folder: Games, start_menu_category: Game}
+  # The aisleriot package ships its entry as sol.desktop (historical name).
+  - {name: Solitaire,  desktop_id: sol.desktop,                desktop_folder: Games, start_menu_category: Game}
+  - {name: Mahjongg,   desktop_id: org.gnome.Mahjongg.desktop, desktop_folder: Games, start_menu_category: Game}
+
+  # --- Education (folder: Education, category: Education) ------------------
+  - {name: GCompris,   desktop_id: gcompris-qt.desktop,        desktop_folder: Education, start_menu_category: Education}
+  - {name: KGeography, desktop_id: org.kde.kgeography.desktop, desktop_folder: Education, start_menu_category: Education}
+  - {name: TuxMath,    desktop_id: tuxmath.desktop,            desktop_folder: Education, start_menu_category: Education}
+  - {name: TuxTyping,  desktop_id: tuxtype.desktop,            desktop_folder: Education, start_menu_category: Education}
+  - {name: Stellarium, desktop_id: stellarium.desktop,         desktop_folder: Education, start_menu_category: Education}
+
+  # --- Productivity (folder: Productivity, categories: Office/Utility/Network)
+  - {name: LibreOffice Writer, desktop_id: libreoffice-writer.desktop, desktop_folder: Productivity, start_menu_category: Office}
+  - {name: LibreOffice Calc,   desktop_id: libreoffice-calc.desktop,   desktop_folder: Productivity, start_menu_category: Office}
+  - {name: FeatherPad,         desktop_id: featherpad.desktop,         desktop_folder: Productivity, start_menu_category: Utility}
+  - {name: File Manager,       desktop_id: pcmanfm-qt.desktop,         desktop_folder: Productivity, start_menu_category: Utility}
+  - {name: Firefox,            desktop_id: firefox.desktop,            desktop_folder: Productivity, start_menu_category: Network}

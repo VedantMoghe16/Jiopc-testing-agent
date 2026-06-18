@@ -1,0 +1,22 @@
+Package: jiopc-testing-agent
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.10), python3-yaml, python3-psutil
+Recommends: python3-venv, python3-pip
+Maintainer: InnovAstra <developer@moxiebeauty.in>
+Homepage: https://example.com/jiopc-testing-agent
+Description: JioPC image validation agent (web, native, desktop presence)
+ Scripted validation agent for freshly patched JioPC OS images:
+ web apps reachable and visually sound (Part A, Playwright),
+ native apps healthy (Part B, psutil), desktop folders and
+ start-menu categories correct (Part C). Writes a JSONL log to
+ ~/.local/share/jiopc/agent/ and ships a model-agnostic LLM
+ analysis layer (jiopc-agent-analyse). Root is used only at
+ install time; runtime is pure user-space.
+ .
+ Playwright/Chromium for Part A cannot come from apt; postinst
+ sets up /opt/jiopc-testing-agent/venv best-effort. If that step
+ fails the package still installs and Parts B/C work; Part A then
+ logs ERROR records with the manual install hint (see INSTALL.md).

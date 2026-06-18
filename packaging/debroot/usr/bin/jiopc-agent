@@ -1,0 +1,18 @@
+#!/bin/sh
+# jiopc-agent — launcher for the JioPC testing agent.
+# Prefers the Playwright venv python if postinst managed to create it.
+set -eu
+APP_HOME=/opt/jiopc-testing-agent
+PY="$APP_HOME/venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+PYTHONPATH="$APP_HOME/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+# Default to the shipped config when the caller did not pass --config.
+case " $* " in
+    *" --config"*)
+        exec "$PY" -m jiopc_agent "$@"
+        ;;
+    *)
+        exec "$PY" -m jiopc_agent --config "$APP_HOME/jiopc-agent.yaml" "$@"
+        ;;
+esac
