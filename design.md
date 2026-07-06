@@ -4,6 +4,10 @@
 
 The JioPC Automated Testing Agent is composed of a runner core and three testing components, complemented by an LLM-powered log analysis script.
 
+![JioPC Automated Testing Agent architecture](screenshots/architecture.png)
+
+<details><summary>Text version of the diagram</summary>
+
 ```text
 +-------------------+        +--------------------+
 | jiopc-agent.yaml  | -----> | jiopc_agent.py CLI |
@@ -25,6 +29,8 @@ The JioPC Automated Testing Agent is composed of a runner core and three testing
                            | analyse.py (LLM Layer) |
                            +------------------------+
 ```
+
+</details>
 
 ## Technology Choices & Justification
 - **Language**: Python 3.10+ (Available on Ubuntu 24.04, rich ecosystem).

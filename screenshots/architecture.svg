@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 760" font-family="'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="JioPC Automated Testing Agent architecture">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6472"/>
+    </marker>
+    <style>
+      .card{stroke-width:1.5;rx:10;}
+      .t{fill:#16213e;font-size:15px;font-weight:600;}
+      .s{fill:#3a4256;font-size:11.5px;}
+      .lbl{fill:#5b6472;font-size:11px;font-style:italic;}
+      .flow{stroke:#5b6472;stroke-width:1.8;fill:none;}
+      .hd{fill:#0b1f4d;font-size:13px;font-weight:700;letter-spacing:.5px;}
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="760" fill="#ffffff"/>
+  <text x="480" y="34" text-anchor="middle" fill="#0b1f4d" font-size="22" font-weight="700">JioPC Automated Testing Agent — Architecture</text>
+  <text x="480" y="55" text-anchor="middle" class="lbl">Single YAML-driven CLI · runs unattended · exits 0 iff all required tests pass · LLM analysis is post-run</text>
+
+  <!-- config -->
+  <rect class="card" x="330" y="78" width="300" height="52" rx="10" fill="#fdeecd" stroke="#e0ab3f"/>
+  <text x="480" y="100" text-anchor="middle" class="t">jiopc-agent.yaml</text>
+  <text x="480" y="119" text-anchor="middle" class="s">single source of truth — no hardcoded apps/URLs/selectors</text>
+
+  <!-- CLI -->
+  <rect class="card" x="355" y="158" width="250" height="52" rx="10" fill="#e6e8ef" stroke="#9aa2b4"/>
+  <text x="480" y="180" text-anchor="middle" class="t">jiopc_agent.py — CLI</text>
+  <text x="480" y="199" text-anchor="middle" class="s">argparse · --part/--parallel/--analyse · exit codes</text>
+
+  <!-- runner -->
+  <rect class="card" x="355" y="238" width="250" height="46" rx="10" fill="#e6e8ef" stroke="#9aa2b4"/>
+  <text x="480" y="258" text-anchor="middle" class="t">runner.py</text>
+  <text x="480" y="275" text-anchor="middle" class="s">orchestrates parts in agent.part_order</text>
+
+  <!-- three parts -->
+  <rect class="card" x="40" y="322" width="270" height="118" rx="10" fill="#d7e6ff" stroke="#5b8def"/>
+  <text x="56" y="345" class="hd">PART A · WEB</text>
+  <text x="56" y="366" class="t" font-size="13">part_a_web.py</text>
+  <text x="56" y="386" class="s">Playwright · 1 shared headless Chromium</text>
+  <text x="56" y="403" class="s">HTTP + load timing + element checks</text>
+  <text x="56" y="420" class="s">CSS or ARIA role · realistic UA identity</text>
+  <text x="56" y="435" class="s">bot wall → BLOCKED (never bypassed)</text>
+
+  <rect class="card" x="345" y="322" width="270" height="118" rx="10" fill="#d9f2dd" stroke="#4faf68"/>
+  <text x="361" y="345" class="hd">PART B · NATIVE</text>
+  <text x="361" y="366" class="t" font-size="13">part_b_native.py</text>
+  <text x="361" y="386" class="s">subprocess (new session) → launch</text>
+  <text x="361" y="403" class="s">psutil detect · RSS/CPU sample @ T+5s</text>
+  <text x="361" y="420" class="s">SIGTERM group → sweep orphans</text>
+  <text x="361" y="435" class="s">launched-then-died → DEGRADED</text>
+
+  <rect class="card" x="650" y="322" width="270" height="118" rx="10" fill="#e9e0ff" stroke="#8a6fe0"/>
+  <text x="666" y="345" class="hd">PART C · PRESENCE</text>
+  <text x="666" y="366" class="t" font-size="13">part_c_presence.py</text>
+  <text x="666" y="386" class="s">read-only · index .desktop once</text>
+  <text x="666" y="403" class="s">desktop_entry.py parser (no PyXDG)</text>
+  <text x="666" y="420" class="s">folder + Categories= checks</text>
+  <text x="666" y="435" class="s">absent → MISSING · wrong → MISPLACED</text>
+
+  <!-- selfwatch -->
+  <rect class="card" x="650" y="238" width="270" height="46" rx="10" fill="#fdf3c4" stroke="#c9a92e" stroke-width="1.5"/>
+  <text x="666" y="258" class="t" font-size="13">selfwatch.py</text>
+  <text x="666" y="275" class="s">samples agent's own CPU/RSS → budget evidence</text>
+
+  <!-- runlog -->
+  <rect class="card" x="300" y="482" width="360" height="56" rx="10" fill="#e6e8ef" stroke="#9aa2b4"/>
+  <text x="480" y="505" text-anchor="middle" class="t">runlog.py → JSONL log</text>
+  <text x="480" y="524" text-anchor="middle" class="s">~/.local/share/jiopc/agent/test_run_*.log · header + records + summary</text>
+
+  <!-- history -->
+  <rect class="card" x="700" y="482" width="220" height="56" rx="10" fill="#f3e7f9" stroke="#b98fd0"/>
+  <text x="810" y="505" text-anchor="middle" class="t" font-size="13">history.jsonl</text>
+  <text x="810" y="524" text-anchor="middle" class="s">regression detection (bonus)</text>
+
+  <!-- analyse -->
+  <rect class="card" x="300" y="576" width="360" height="56" rx="10" fill="#ffe6cc" stroke="#e8942f"/>
+  <text x="480" y="599" text-anchor="middle" class="t">analyse.py — LLM layer</text>
+  <text x="480" y="618" text-anchor="middle" class="s">stdlib urllib · OpenAI-compatible · model-agnostic</text>
+
+  <!-- verdict -->
+  <rect class="card" x="300" y="672" width="172" height="52" rx="10" fill="#d9f2dd" stroke="#3f9d5b"/>
+  <text x="386" y="697" text-anchor="middle" class="t">PROMOTE</text>
+  <text x="386" y="714" text-anchor="middle" class="s">all required tests pass</text>
+  <rect class="card" x="488" y="672" width="172" height="52" rx="10" fill="#ffdcdc" stroke="#d4544f"/>
+  <text x="574" y="697" text-anchor="middle" class="t">HOLD</text>
+  <text x="574" y="714" text-anchor="middle" class="s">≥1 required failure</text>
+
+  <!-- flows -->
+  <path class="flow" d="M480,130 L480,156" marker-end="url(#arrow)"/>
+  <path class="flow" d="M480,210 L480,236" marker-end="url(#arrow)"/>
+  <path class="flow" d="M405,284 L200,320" marker-end="url(#arrow)"/>
+  <path class="flow" d="M480,284 L480,320" marker-end="url(#arrow)"/>
+  <path class="flow" d="M555,284 L770,320" marker-end="url(#arrow)"/>
+  <path class="flow" d="M175,440 L175,510 L298,510" marker-end="url(#arrow)"/>
+  <path class="flow" d="M480,440 L480,480" marker-end="url(#arrow)"/>
+  <path class="flow" d="M785,440 L785,510 L662,510" marker-end="url(#arrow)"/>
+  <path class="flow" d="M480,538 L480,574" marker-end="url(#arrow)"/>
+  <path class="flow" d="M660,510 L698,510" marker-end="url(#arrow)"/>
+  <path class="flow" d="M440,632 L410,670" marker-end="url(#arrow)"/>
+  <path class="flow" d="M520,632 L550,670" marker-end="url(#arrow)"/>
+  <path class="flow" d="M785,284 L785,320" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+</svg>
