@@ -63,3 +63,9 @@ python analyse.py --log ~/.local/share/jiopc/agent/test_run_...log
 ## Interpretation
 - **PROMOTE**: All required tests passed. The OS image is safe to promote.
 - **HOLD**: At least one required test failed (FAIL, MISSING, MISPLACED, ERROR). The OS image requires review.
+
+
+## team InnovAstra
+1. Kanakamurthy H
+2. Vedant Moghe
+3. Anant Asati
